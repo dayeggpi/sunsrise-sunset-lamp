@@ -19,8 +19,8 @@
 #define NUM_STOPS    11
 
 // ─── WiFi credentials ────────────────────────────────────────────────────────
-#define WIFI_SSID "REPLACE_WIFI_SSID"
-#define WIFI_PASS "REPLACE_WIFI_PWD"
+#define WIFI_SSID "WIFI_SSID"
+#define WIFI_PASS "WIFI_PASSWORD"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ uint8_t   defaultBrightness = 255;
 bool      onAfterSunrise  = false;
 
 uint8_t corrR = 255, corrG = 255, corrB = 255;
+uint8_t   ntpIntervalHours = 3;
 
 static const uint8_t orderTable[6][3] = {
   {0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}
@@ -188,6 +189,7 @@ static void loadSettings() {
   corrR = cr[0]; corrG = cr[1]; corrB = cr[2];
 
   ledOrderIdx = (uint8_t)constrain((int)prefs.getChar("ordi", 0), 0, 5);
+  ntpIntervalHours = (uint8_t)constrain((int)prefs.getUChar("ntpiv", 3), 1, 168);
 
   prefs.getBytes("srpos", srPos, sizeof(srPos));
   prefs.getBytes("srcol", srCol, sizeof(srCol));
@@ -217,6 +219,7 @@ static void saveSettings() {
   uint8_t cr[3] = {corrR, corrG, corrB};
   prefs.putBytes("corr", cr, 3);
   prefs.putChar("ordi", (int8_t)ledOrderIdx);
+  prefs.putUChar("ntpiv", ntpIntervalHours);
 
   prefs.putBytes("srpos", srPos, sizeof(srPos));
   prefs.putBytes("srcol", srCol, sizeof(srCol));
@@ -467,6 +470,15 @@ static void handleRoot() {
   body += tzHours;
   body += F("' min=-12 max=14 style='width:64px'></div>");
 
+  // NTP sync interval
+  body += F("<div><label>NTP sync interval</label>"
+            "<div style='display:flex;gap:8px;align-items:center'>"
+            "<input type=number name=ntpiv value='");
+  body += ntpIntervalHours;
+  body += F("' min=1 max=168 style='width:64px'>"
+            "<span style='font-size:.85em;color:#aaa'>hours</span>"
+            "</div></div>");
+
   // Automation enable
   body += F("<div><label>Sunrise/Sunset automation</label>"
             "<label style='display:flex;gap:8px;align-items:center;cursor:pointer'>"
@@ -676,6 +688,8 @@ static void handleSave() {
   if (server.hasArg("corrb")) corrB = (uint8_t)constrain(server.arg("corrb").toInt(), 0, 255);
   if (server.hasArg("ordi"))
     ledOrderIdx = (uint8_t)constrain(server.arg("ordi").toInt(), 0, 5);
+  if (server.hasArg("ntpiv"))
+    ntpIntervalHours = (uint8_t)constrain(server.arg("ntpiv").toInt(), 1, 168);
 
   for (int i = 0; i < NUM_STOPS; i++) {
     if (server.hasArg("src" + String(i)))
@@ -796,8 +810,7 @@ void loop() {
   server.handleClient();
   handleButton();
   updateLamp();
-  // 10800000UL = every 3 hours, 3600000UL = every hour and so on
-  if (WiFi.status() == WL_CONNECTED && millis() - lastNtpSync >= 10800000UL) {
+  if (WiFi.status() == WL_CONNECTED && millis() - lastNtpSync >= (unsigned long)ntpIntervalHours * 3600000UL) {
     configTime(tzHours * 3600, 0, "pool.ntp.org");
     lastNtpSync = millis();
   }
